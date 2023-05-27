@@ -2,7 +2,17 @@ from math import sqrt
 
 import torch
 from torch import bmm, concat, ones, softmax, transpose, triu
-from torch.nn import Embedding, Linear, Module, ModuleDict, ModuleList, ReLU, Sequential
+from torch.nn import (
+    CrossEntropyLoss,
+    Embedding,
+    Linear,
+    Module,
+    ModuleDict,
+    ModuleList,
+    ReLU,
+    Sequential,
+)
+from torch.optim import SGD
 
 
 class Attention(Module):
@@ -106,10 +116,10 @@ class Transformer(Module):
 
         output = self.blocks(combined) # batch_size x sequence_length x d_model
 
-        # get probability across all tokens
-        vocab_probs = softmax(self.vocab_transform(output), dim=-1) # batch_size x sequence_length x vocab_size
+        # get logits across all possible tokens
+        vocab_logits = self.vocab_transform(output) # batch_size x sequence_length x vocab_size
 
-        return vocab_probs # batch_size x sequence_length x vocab_size
+        return vocab_logits # batch_size x sequence_length x vocab_size
 
 # simple character-level tokenizer
 class Tokenizer:
@@ -129,17 +139,82 @@ if __name__ == "__main__":
         dataset = f.read()
     tokenizer = Tokenizer(dataset=dataset)
 
-    token_ids = tokenizer("hello, how is your day going?")
+    # print(tokenizer.vocab)
+    # print(tokenizer.ctoi)
+    # print(tokenizer.itoc)
 
-    print(token_ids)
+    model = Transformer(
+        d_model=16,
+        vocab_size=len(tokenizer.vocab),
+        sequence_length=512,
+        n_heads=2,
+        hidden_features=32, # d_model*2 for now
+        n_layers=4,
+    )
 
-    text = tokenizer.decode(token_ids)
+    # print(model)
 
-    print(text)
+    input_sequences = []
 
-    print(tokenizer.vocab)
+    for i in range(0, len(dataset)-512, 512):
+        chunk = dataset[i : i + 512]
+        token_ids = tokenizer(chunk)
+        input_sequences.append(token_ids)
 
-    print(tokenizer.ctoi)
+    num_epochs = 1
+
+    loss_fn = CrossEntropyLoss()
+    optimizer = SGD(params=model.parameters(), lr=0.001, momentum=0.9)
+
+    for e in range(num_epochs):
+        for sequence in input_sequences[:10]:
+            total_loss = 0
+            # create a batch from one sequence of all lengths
+            for i in range(2, len(sequence)):
+                X = torch.as_tensor([sequence[:i]])
+                
+                token_to_predict = sequence[i]
+                y = torch.zeros(1, len(tokenizer.vocab))
+                y = y.type(torch.LongTensor)
+                y[0][token_to_predict] = 1.0 # make the next token have 100% probability
+
+                # print(X.shape, y.shape)
+
+                optimizer.zero_grad()
+
+                logits = model(X)
+                loss = loss_fn(input=logits, target=y)
+                loss.backward()
+
+                #print(loss)
+
+                optimizer.step()
+
+            print(total_loss / 511)
+
+    # torch.save(model.state_dict(), "model.pt")
+
+    prompt = "From fairest"
+
+    while True:
+        token_ids = torch.as_tensor([tokenizer(prompt)])
+
+        with torch.no_grad():
+            logits = model(token_ids)[0][-1]
+
+        probs = softmax(logits, -1)
+
+        top_k_tokens = torch.topk(probs, 1)
+
+        sample_index = torch.multinomial(top_k_tokens.values, num_samples=1)
+
+        sample_token_id = top_k_tokens.indices[sample_index].item()
+
+        sample_token = tokenizer.itoc[sample_token_id]
+
+        print(sample_token, end="", flush=False)
+
+        prompt += sample_token
 
     # d_model = 10
     # n_heads = 2 # n_heads has to divide d_model evenly!
@@ -163,5 +238,5 @@ if __name__ == "__main__":
     # import seaborn as sns
 
     # plt.figure(figsize=(10, 10))
-    # sns.heatmap(output[0].detach().numpy(), cmap="YlGnBu")
+    # sns.heatmap(probs.detach().numpy(), cmap="YlGnBu")
     # plt.show()
