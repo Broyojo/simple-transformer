@@ -112,13 +112,13 @@ class Transformer(Module):
     
 if __name__ == "__main__":
     d_model = 10
-    n_heads = 5 # n_heads has to divide d_model evenly!
-    batch_size = 2
+    n_heads = 2 # n_heads has to divide d_model evenly!
+    batch_size = 1
     sequence_length = 5
     vocab_size = 15
-    n_layers = 5
+    n_layers = 2
 
-    transformer = Transformer(d_model=d_model, vocab_size=vocab_size, sequence_length=sequence_length, n_heads=n_heads, hidden_features=d_model*2, n_layers=5)
+    transformer = Transformer(d_model=d_model, vocab_size=vocab_size, sequence_length=sequence_length, n_heads=n_heads, hidden_features=d_model*2, n_layers=n_layers)
 
     print(transformer)
 
