@@ -98,6 +98,7 @@ class Transformer(Module):
     def forward(self, tokens): # batch_size x sequence_length
         embeddings = self.embedding(tokens) # batch_size x sequence_length x d_model
 
+        # get position numbers for each token and make a copy for each batch
         positions = torch.arange(tokens.shape[1]).unsqueeze(0).repeat(tokens.shape[0], 1) # batch_sized x sequence_length
         positional_embeddings = self.positional_embedding(positions) # batch_size x sequence_length x d_model
 
@@ -128,23 +129,9 @@ if __name__ == "__main__":
 
     print(output, output.shape)
 
-    # transformer_block = TransformerBlock(d_model=d_model, n_heads=n_heads, hidden_features=d_model*2)
+    import matplotlib.pyplot as plt
+    import seaborn as sns
 
-    # mha = MultiHeadAttention(d_model=d_model, n_heads=n_heads)
-    # output = transformer_block(torch.rand(batch_size, sequence_length, d_model)) # batch_size x sequence_length x d_model
-    # print(output, output.shape) # batch_size x sequence_length x d_model
-
-    # mlp = MLP(in_features=d_model, hidden_features=d_model*2, out_features=d_model)
-
-    # print(mlp)
-
-    # mlp_output = mlp(output)
-
-    # print(mlp_output, mlp_output.shape)
-
-    # import matplotlib.pyplot as plt
-    # import seaborn as sns
-
-    # plt.figure(figsize=(10, 10))
-    # sns.heatmap(output[0].detach().numpy(), cmap="YlGnBu")
-    # plt.show()
+    plt.figure(figsize=(10, 10))
+    sns.heatmap(output[0].detach().numpy(), cmap="YlGnBu")
+    plt.show()
