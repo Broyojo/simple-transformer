@@ -110,28 +110,58 @@ class Transformer(Module):
         vocab_probs = softmax(self.vocab_transform(output), dim=-1) # batch_size x sequence_length x vocab_size
 
         return vocab_probs # batch_size x sequence_length x vocab_size
-    
+
+# simple character-level tokenizer
+class Tokenizer:
+    def __init__(self, dataset):
+        self.vocab = list(set(dataset))
+        self.ctoi = {c: i for i, c in enumerate(self.vocab)}
+        self.itoc = {i: c for c, i in self.ctoi.items()}
+
+    def __call__(self, text):
+        return [self.ctoi[c] for c in text]
+
+    def decode(self, token_ids):
+        return "".join([self.itoc[id] for id in token_ids])
+
 if __name__ == "__main__":
-    d_model = 10
-    n_heads = 2 # n_heads has to divide d_model evenly!
-    batch_size = 1
-    sequence_length = 5
-    vocab_size = 15
-    n_layers = 2
+    with open("shakespeare.txt", "r") as f:
+        dataset = f.read()
+    tokenizer = Tokenizer(dataset=dataset)
 
-    transformer = Transformer(d_model=d_model, vocab_size=vocab_size, sequence_length=sequence_length, n_heads=n_heads, hidden_features=d_model*2, n_layers=n_layers)
+    token_ids = tokenizer("hello, how is your day going?")
 
-    print(transformer)
+    print(token_ids)
 
-    tokens = torch.randint(0, vocab_size-1, (batch_size, sequence_length)) # batch_size x sequence_length
+    text = tokenizer.decode(token_ids)
 
-    output = transformer(tokens) # batch_size x sequence_length x d_model
+    print(text)
 
-    print(output, output.shape)
+    print(tokenizer.vocab)
 
-    import matplotlib.pyplot as plt
-    import seaborn as sns
+    print(tokenizer.ctoi)
 
-    plt.figure(figsize=(10, 10))
-    sns.heatmap(output[0].detach().numpy(), cmap="YlGnBu")
-    plt.show()
+    # d_model = 10
+    # n_heads = 2 # n_heads has to divide d_model evenly!
+    # batch_size = 1
+    # sequence_length = 5
+    # vocab_size = 15
+    # n_layers = 2
+
+    # transformer = Transformer(d_model=d_model, vocab_size=vocab_size, sequence_length=sequence_length, n_heads=n_heads, hidden_features=d_model*2, n_layers=n_layers)
+
+    # print(transformer)
+
+    # # create a random sequence of tokens for testing
+    # tokens = torch.randint(0, vocab_size-1, (batch_size, sequence_length)) # batch_size x sequence_length
+
+    # output = transformer(tokens) # batch_size x sequence_length x d_model
+
+    # print(output, output.shape)
+
+    # import matplotlib.pyplot as plt
+    # import seaborn as sns
+
+    # plt.figure(figsize=(10, 10))
+    # sns.heatmap(output[0].detach().numpy(), cmap="YlGnBu")
+    # plt.show()
