@@ -1,5 +1,6 @@
 from math import sqrt
 
+import matplotlib.pyplot as plt
 import torch
 from torch import bmm, concat, ones, softmax, transpose, triu
 from torch.nn import (
@@ -12,7 +13,7 @@ from torch.nn import (
     ReLU,
     Sequential,
 )
-from torch.optim import SGD
+from torch.optim import AdamW
 from tqdm import tqdm
 
 
@@ -125,7 +126,7 @@ class Transformer(Module):
 # simple character-level tokenizer
 class Tokenizer:
     def __init__(self, dataset):
-        self.vocab = list(set(dataset))
+        self.vocab = sorted(list(set(dataset)))
         self.ctoi = {c: i for i, c in enumerate(self.vocab)}
         self.itoc = {i: c for c, i in self.ctoi.items()}
 
@@ -149,13 +150,18 @@ if __name__ == "__main__":
     # print(tokenizer.ctoi)
     # print(tokenizer.itoc)
 
+    # Set device that should be used
+    torch.set_default_device(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+
+    sequence_length = 512
+
     model = Transformer(
-        d_model=16,
+        d_model=384,
         vocab_size=len(tokenizer.vocab),
-        sequence_length=512,
-        n_heads=2,
-        hidden_features=32, # d_model*2 for now
-        n_layers=4,
+        sequence_length=sequence_length,
+        n_heads=8,
+        hidden_features=384*2, # d_model*2 for now
+        n_layers=8,
     )
 
     # Parameters
@@ -163,30 +169,31 @@ if __name__ == "__main__":
     learning_rate = 0.001
     batch_size = 32
 
-    # Move the model to GPU if available
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-
     # Define loss function and optimizer
     criterion = CrossEntropyLoss(ignore_index=tokenizer.ctoi["~"])
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    optimizer = AdamW(model.parameters(), lr=learning_rate)
 
     # Prepare data
     data = tokenizer(dataset)
     data = torch.tensor(data, dtype=torch.long)
 
     # Split data into batches
-    num_batches = len(data) // (batch_size * 512)
-    data = data[:num_batches * batch_size * 512]
+    num_batches = len(data) // (batch_size * sequence_length)
+    data = data[:num_batches * batch_size * sequence_length]
     data = data.view(batch_size, -1)
 
+    losses = []
+
+    # Training Loop
     for epoch in range(epochs):
         print(f"Epoch: {epoch + 1}")
 
+        epoch_losses = []
+
         # Prepare input and target
-        for i in tqdm(range(0, data.size(1)-512, 512)):
-            inputs = data[:, i:i+512].to(device)
-            targets = data[:, i+1:i+513].to(device)
+        for i in tqdm(range(0, data.size(1)-sequence_length, sequence_length)):
+            inputs = data[:, i:i+sequence_length]
+            targets = data[:, i+1:i+sequence_length+1]
 
             # Forward pass
             outputs = model(inputs)
@@ -194,34 +201,51 @@ if __name__ == "__main__":
             # Compute loss
             loss = criterion(outputs.view(-1, len(tokenizer.vocab)), targets.reshape(-1))
 
-            if i % 10 == 0:
+            if i % 100 == 0:
                 print(loss.item())
+                epoch_losses.append(loss.item())
+                losses.append(loss.item())
 
             # Backward pass and optimize
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
         
-        print(loss.item())
+        print("average loss:", sum(epoch_losses) / len(epoch_losses))
+
+    plt.plot(losses)
+    plt.show()
 
     # Save the model
     torch.save(model.state_dict(), 'transformer_model_batched.pt')
 
     # Use the model for text generation
-    model.eval()
-    with torch.no_grad():
-        start_text = "To be or not to be, that is the question:"
-        start_tokens = torch.tensor(tokenizer(start_text), dtype=torch.long).unsqueeze(0).to(device)
+    def generate_text(model, tokenizer, start_text, num_chars = 100, top_k = 5):
+        model = model.eval()
+
+        start_tokens = torch.tensor(tokenizer(start_text), dtype=torch.long).unsqueeze(0)
+
         generated_text = start_text
 
-        for _ in range(100): # generate 100 characters
-            outputs = model(start_tokens)
-            _, next_token = torch.max(outputs, dim=-1)
-            next_token = next_token[0, -1]  # Take the last token
-            generated_text += tokenizer.itoc[next_token.item()]
-            start_tokens = torch.cat((start_tokens, next_token.unsqueeze(0).unsqueeze(0)), dim=1)
+        with torch.no_grad():
+            for _ in range(num_chars):
+                outputs = model(start_tokens)
 
-        print(generated_text)
+                probabilities = torch.nn.functional.softmax(outputs, dim=-1)
+
+                top_probs, top_indices = torch.topk(probabilities[0, -1, :], top_k)
+
+                sampled_index = torch.multinomial(top_probs, 1).item()
+
+                generated_text += tokenizer.itoc[top_indices[sampled_index].item()]  # Convert tensor to integer
+
+                start_tokens = torch.cat((start_tokens, top_indices[sampled_index].unsqueeze(0).unsqueeze(0)), dim=1)
+
+        return generated_text
+
+    output = generate_text(model=model, tokenizer=tokenizer, start_text="To be or not to be:", num_chars=400)
+
+    print(output)
 
     # print(model)
 

@@ -6,3 +6,4 @@ pyvenv.cfg
 src/shakespeare.txt
 *__pycache__*
 *.pt
+lib64
