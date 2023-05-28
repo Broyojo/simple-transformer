@@ -13,6 +13,7 @@ from torch.nn import (
     Sequential,
 )
 from torch.optim import SGD
+from tqdm import tqdm
 
 
 class Attention(Module):
@@ -139,6 +140,11 @@ if __name__ == "__main__":
         dataset = f.read()
     tokenizer = Tokenizer(dataset=dataset)
 
+    # special token for padding
+    tokenizer.vocab.append("~")
+    tokenizer.ctoi["~"] = len(tokenizer.vocab)-1
+    tokenizer.itoc[len(tokenizer.vocab)-1] = "~"
+
     # print(tokenizer.vocab)
     # print(tokenizer.ctoi)
     # print(tokenizer.itoc)
@@ -152,69 +158,161 @@ if __name__ == "__main__":
         n_layers=4,
     )
 
+    # Parameters
+    epochs = 10
+    learning_rate = 0.001
+    batch_size = 32
+
+    # Move the model to GPU if available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = model.to(device)
+
+    # Define loss function and optimizer
+    criterion = CrossEntropyLoss(ignore_index=tokenizer.ctoi["~"])
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+    # Prepare data
+    data = tokenizer(dataset)
+    data = torch.tensor(data, dtype=torch.long)
+
+    # Split data into batches
+    num_batches = len(data) // (batch_size * 512)
+    data = data[:num_batches * batch_size * 512]
+    data = data.view(batch_size, -1)
+
+    for epoch in range(epochs):
+        print(f"Epoch: {epoch + 1}")
+
+        # Prepare input and target
+        for i in tqdm(range(0, data.size(1)-512, 512)):
+            inputs = data[:, i:i+512].to(device)
+            targets = data[:, i+1:i+513].to(device)
+
+            # Forward pass
+            outputs = model(inputs)
+
+            # Compute loss
+            loss = criterion(outputs.view(-1, len(tokenizer.vocab)), targets.reshape(-1))
+
+            if i % 10 == 0:
+                print(loss.item())
+
+            # Backward pass and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        
+        print(loss.item())
+
+    # Save the model
+    torch.save(model.state_dict(), 'transformer_model_batched.pt')
+
+    # Use the model for text generation
+    model.eval()
+    with torch.no_grad():
+        start_text = "To be or not to be, that is the question:"
+        start_tokens = torch.tensor(tokenizer(start_text), dtype=torch.long).unsqueeze(0).to(device)
+        generated_text = start_text
+
+        for _ in range(100): # generate 100 characters
+            outputs = model(start_tokens)
+            _, next_token = torch.max(outputs, dim=-1)
+            next_token = next_token[0, -1]  # Take the last token
+            generated_text += tokenizer.itoc[next_token.item()]
+            start_tokens = torch.cat((start_tokens, next_token.unsqueeze(0).unsqueeze(0)), dim=1)
+
+        print(generated_text)
+
     # print(model)
 
-    input_sequences = []
+    # input_sequences = []
 
-    for i in range(0, len(dataset)-512, 512):
-        chunk = dataset[i : i + 512]
-        token_ids = tokenizer(chunk)
-        input_sequences.append(token_ids)
+    # for i in range(0, len(dataset)-512, 512):
+    #     chunk = dataset[i : i + 512]
+    #     token_ids = tokenizer(chunk)
+    #     input_sequences.append(token_ids)
 
-    num_epochs = 1
+    # num_epochs = 1
 
-    loss_fn = CrossEntropyLoss()
-    optimizer = SGD(params=model.parameters(), lr=0.001, momentum=0.9)
+    # loss_fn = CrossEntropyLoss()
+    # optimizer = SGD(params=model.parameters(), lr=0.001, momentum=0.9)
 
-    for e in range(num_epochs):
-        for sequence in input_sequences[:10]:
-            total_loss = 0
-            # create a batch from one sequence of all lengths
-            for i in range(2, len(sequence)):
-                X = torch.as_tensor([sequence[:i]])
+    # for e in range(num_epochs):
+    #     for size in tqdm(range(1, 511)):
+    #         input_batch = torch.LongTensor()
+    #         output_batch = torch.LongTensor()
+    #         for sequence in input_sequences:
+    #             X = torch.as_tensor(sequence[:size])
+    #             input_batch = input
+    #             token_to_predict = sequence[size]
+    #             y = torch.zeros(1, len(tokenizer.vocab))
+    #             y[0][token_to_predict] = 1.0
+    #             output_batch.append(y)
+
+    #         input_batch = torch.as_tensor(input_batch)
+    #         output_batch = torch.as_tensor(output_batch)
+
+    #         print(input_batch.shape, output_batch.shape)
+
+    #         optimizer.zero_grad()
+
+    #         logits = model(input_batch)
+    #         loss = loss_fn(logits, output_batch)
+    #         loss.backward()
+
+    #         optimizer.step()
+
+
+
+
+
+            # total_loss = 0
+            # # create a batch from one sequence of all lengths
+            # for i in range(2, len(sequence)):
+            #     X = torch.as_tensor([sequence[:i]])
                 
-                token_to_predict = sequence[i]
-                y = torch.zeros(1, len(tokenizer.vocab))
-                y = y.type(torch.LongTensor)
-                y[0][token_to_predict] = 1.0 # make the next token have 100% probability
+            #     token_to_predict = sequence[i]
+            #     y = torch.zeros(1, len(tokenizer.vocab))
+            #     y = y.type(torch.LongTensor)
+            #     y[0][token_to_predict] = 1.0 # make the next token have 100% probability
 
-                # print(X.shape, y.shape)
+            #     # print(X.shape, y.shape)
 
-                optimizer.zero_grad()
+            #     optimizer.zero_grad()
 
-                logits = model(X)
-                loss = loss_fn(input=logits, target=y)
-                loss.backward()
+            #     logits = model(X)
+            #     loss = loss_fn(input=logits, target=y)
+            #     loss.backward()
 
-                #print(loss)
+            #     #print(loss)
 
-                optimizer.step()
+            #     optimizer.step()
 
-            print(total_loss / 511)
+            # print(total_loss / 511)
 
     # torch.save(model.state_dict(), "model.pt")
 
-    prompt = "From fairest"
+    # prompt = "From fairest"
 
-    while True:
-        token_ids = torch.as_tensor([tokenizer(prompt)])
+    # while True:
+    #     token_ids = torch.as_tensor([tokenizer(prompt)])
 
-        with torch.no_grad():
-            logits = model(token_ids)[0][-1]
+    #     with torch.no_grad():
+    #         logits = model(token_ids)[0][-1]
 
-        probs = softmax(logits, -1)
+    #     probs = softmax(logits, -1)
 
-        top_k_tokens = torch.topk(probs, 1)
+    #     top_k_tokens = torch.topk(probs, 1)
 
-        sample_index = torch.multinomial(top_k_tokens.values, num_samples=1)
+    #     sample_index = torch.multinomial(top_k_tokens.values, num_samples=1)
 
-        sample_token_id = top_k_tokens.indices[sample_index].item()
+    #     sample_token_id = top_k_tokens.indices[sample_index].item()
 
-        sample_token = tokenizer.itoc[sample_token_id]
+    #     sample_token = tokenizer.itoc[sample_token_id]
 
-        print(sample_token, end="", flush=False)
+    #     print(sample_token, end="", flush=False)
 
-        prompt += sample_token
+    #     prompt += sample_token
 
     # d_model = 10
     # n_heads = 2 # n_heads has to divide d_model evenly!

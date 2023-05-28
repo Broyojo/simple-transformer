@@ -4,3 +4,5 @@ lib
 share
 pyvenv.cfg
 src/shakespeare.txt
+*__pycache__*
+*.pt
