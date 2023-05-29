@@ -62,7 +62,7 @@ if __name__ == "__main__":
         n_layers=8,
     )
 
-    model.load_state_dict(torch.load('transformer_model_batched.pt'))
+    model.load_state_dict(torch.load('transformer_model.pt'))
 
     # Generate text
     start_text = "To be or not to be:"

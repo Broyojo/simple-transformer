@@ -89,11 +89,10 @@ class TransformerBlock(Module):
         self.mlp = MLP(in_features=d_model, hidden_features=hidden_features, out_features=d_model)
     
     def forward(self, x):
-        a = self.multi_head_attention(x) # batch_size x sequence_length x d_model
+        a = x + self.multi_head_attention(x) # batch_size x sequence_length x d_model
         # perform key-value lookup for facts (fan out -> fan in)
-        o = self.mlp(a) # batch_size x sequence_length x d_model
-        # add residual connection
-        return o + x # batch_size x sequence_length x d_model
+        o = x + self.mlp(a) # batch_size x sequence_length x d_model
+        return o # batch_size x sequence_length x d_model
 
 class Transformer(Module):
     def __init__(self, d_model, vocab_size, sequence_length, n_heads, hidden_features, n_layers):
@@ -165,7 +164,7 @@ if __name__ == "__main__":
     )
 
     # Parameters
-    epochs = 10
+    epochs = 5
     learning_rate = 0.001
     batch_size = 32
 
@@ -217,7 +216,7 @@ if __name__ == "__main__":
     plt.show()
 
     # Save the model
-    torch.save(model.state_dict(), 'transformer_model_batched.pt')
+    torch.save(model.state_dict(), 'transformer_model.pt')
 
     # Use the model for text generation
     def generate_text(model, tokenizer, start_text, num_chars = 100, top_k = 5):
